@@ -1,0 +1,23 @@
+{
+  "name": "wo-server",
+  "version": "1.0.0",
+  "description": "Create HTTP file server in any directory",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "wo-server": "./bin/app"
+  },
+  "keywords": [
+    "wo-server",
+    "server",
+    "file",
+    "http"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LearnShare/wo-server.git"
+  },
+  "author": "LearnShare",
+  "license": "MIT"
+}

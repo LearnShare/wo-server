@@ -1,0 +1,330 @@
+#!/usr/bin/env node
+
+/** support arguments
+* -d [dir] // run server in [dir]
+* -p [port] // run server on [port]
+* -l // show logs
+*/
+
+var fs = require('fs'),
+    path = require('path'),
+    http = require('http');
+
+var rootDir = process.cwd(),
+    serverPort = 8135,
+    showLog = false;
+
+var args = {};
+var argPrefix = '-';
+var argv = process.argv;
+
+var lastArgName = '';
+for(var i = 0; i < argv.length; i++) {
+  var arg = argv[i];
+
+  if(arg.substring(0, 1) == argPrefix) {
+    lastArgName = arg;
+    args[arg] = [];
+  }else {
+    if(lastArgName.length) {
+      args[lastArgName].push(arg);
+    }
+  }
+}
+
+// rootDir
+if(args['-d']
+    && args['-d'].length) {
+  rootDir = args['-d'][0];
+}
+// port
+if(args['-p']
+    && args['-p'].length) {
+  serverPort = args['-p'][0];
+}
+// port
+if(args['-l']) {
+  showLog = true;
+}
+
+var defaultFiles = ['index.html'];
+
+var mimeTypes = {
+  'txt': 'text/plain; charset=UTF-8',
+
+  'html': 'text/html; charset=UTF-8',
+  'css': 'text/css; charset=UTF-8',
+  'less': 'text/css; charset=UTF-8',
+  'js': 'text/javascript; charset=UTF-8',
+  'json': 'application/json; charset=UTF-8',
+  'xml': 'application/xml',
+
+  'png': 'image/png',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'bmp': 'image/bmp',
+  'gif': 'image/gif',
+  'svg': 'image/svg+xml; charset=UTF-8',
+  'ico': 'image/x-icon',
+
+  'eot': 'application/vnd.ms-fontobject',
+  'woff': 'application/font-woff',
+  'woff2': 'application/font-woff',
+  'ttf': 'font/ttf',
+
+  'webm': 'video/webm',
+  'mp4': 'video/mp4',
+  'mp3': 'audio/mpeg',
+  'ogv': 'video/ogg',
+
+  'pdf': 'application/pdf',
+
+  '*': 'application/octet-stream'
+};
+
+var ignoreFiles = [
+  'System Volume Information',
+  '$RECYCLE.BIN',
+  '$Recycle.Bin'
+];
+
+var ignorePattern = /^\..*$/i;
+
+function dirContents(dir) {
+  var list = fs.readdirSync(dir);
+
+  var dirs = [];
+  var files = [];
+
+  for(var i in list) {
+    var item = list[i];
+
+    if(ignorePattern.test(item)
+        || ignoreFiles.indexOf(item) >= 0) {
+      continue;
+    }
+
+    try {
+      var stat = fs.statSync(dir
+          + '/'
+          + item);
+      if(stat.isDirectory()) {
+        dirs.push({
+          name: item,
+          type: 'dir'
+        });
+      }else if(stat.isFile()) {
+        files.push({
+          name: item,
+          type: 'file',
+          size: stat.size
+        });
+      }
+    } catch(e) {
+      console.log('[' + dir + '/' + item + '] is not a file or dir');
+    }
+  }
+
+  return {
+    dirs: dirs,
+    files: files
+  };
+}
+
+// var contents = dirContents('./test');
+// console.log(contents);
+
+function dirTree(dir) {
+  var tree = null;
+  // check is dir a directory
+  var stat = fs.statSync(dir);
+  if(!stat.isDirectory()) {
+    console.log(dir, 'is not a directory!');
+    return;
+  }
+
+  tree = dirContents(dir);
+
+  for(var i in tree.dirs) {
+    var item = tree.dirs[i];
+
+    item.contents = dirTree(dir
+        + '/'
+        + item.name);
+  }
+
+  return tree;
+}
+
+// var tree = dirTree('./test');
+// console.log(JSON.stringify(tree));
+
+function parseRequest(req, defaultPort) {
+  if(!defaultPort) {
+    defaultPort = 80;
+  }
+
+  var obj = {
+    httpVersion: req.httpVersion,
+    method: req.method,
+    host: '',
+    port: defaultPort,
+    headers: req.headers,
+    agent: req.agent,
+    auth: req.auth
+  };
+
+  var reg_host_port = /^([^:]+)(:([0-9]+))?$/;
+  var hostArray = reg_host_port.exec(req.headers.host);
+  if(hostArray) {
+    obj.host = hostArray[1];
+    if(hostArray[2]) {
+      obj.port = hostArray[3];
+    }
+  }
+  
+  return obj;
+}
+
+var server = http.createServer(function(req, res) {
+  var obj = parseRequest(req);
+
+  if(obj.method != 'GET') {
+    res.statusCode = 405;
+    res.end('Method Not Allowed');
+  }
+
+  var reqUrl = rootDir
+      + req.url;
+
+  if(showLog) {
+    console.log('GET', req.url);
+  }
+
+  var index = reqUrl.indexOf('?');
+  if(index >= 0) {
+    reqUrl = reqUrl.substring(0, index);
+  }
+
+  var statu = dirStatu(reqUrl);
+
+  if(!statu) {
+    res.statusCode = 404;
+    res.end(reqUrl + ' not exist!');
+  }
+
+  if(statu == 'file') {
+    resFile(res, reqUrl);
+  }else if(statu == 'dir') {
+    // check reqUrl is **/, or redirect to **/
+    var lastChar = reqUrl.substring(reqUrl.length - 1);
+    if(lastChar != '/') {
+      res.writeHead(302, {
+        'Location': req.url + '/'
+      });
+      res.end();
+      return;
+    }
+    // check is index.html exist
+    if(defaultFiles
+        && defaultFiles.length) {
+      for(var i in defaultFiles) {
+        var file = defaultFiles[i];
+        var fileDir = reqUrl
+            + '/'
+            + file;
+        var fileStatu = dirStatu(fileDir);
+
+        if(fileStatu == 'file') {
+          resFile(res, fileDir);
+        }else {
+          resDir(req, res, reqUrl);
+        }
+      }
+    }else {
+      resDir(req, res, reqUrl);
+    }
+  }
+});
+
+function dirStatu(dir) {
+  try {
+    var stat = fs.statSync(dir);
+
+    if(stat.isFile()) {
+      return 'file';
+    }else if(stat.isDirectory()) {
+      return 'dir';
+    }
+  }catch(e) {
+    return;
+  }
+}
+
+function resFile(res, dir) {
+  var readStream = fs.createReadStream(dir);
+
+  var contentType = '';
+
+  var ext = path.extname(dir).substring(1);
+  if(mimeTypes[ext]) {
+    contentType = mimeTypes[ext];
+  }else {
+    contentType = mimeTypes['*'];
+  }
+
+  res.writeHead(200, {
+    'Content-Type': contentType
+  });
+
+  readStream.on('data', function(chunk) {
+    res.write(chunk);
+  });
+  readStream.on('end', function(chunk) {
+    res.end();
+  });
+}
+
+function resDir(req, res, url) {
+  res.writeHead(200, {
+    'Content-Type': 'text/html'
+  });
+  var contents = dirContents(url);
+  
+  var list = '<ul>';
+
+  list += '<li><a href="../">../</a></li>';
+
+  for(var i in contents.dirs) {
+    var dir = contents.dirs[i];
+
+    list += '<li><a href="'
+        + req.url
+        + dir.name
+        + '">'
+        + dir.name
+        + '</a></li>';
+  }
+  
+  for(var i in contents.files) {
+    var file = contents.files[i];
+
+    list += '<li><a href="'
+        + req.url
+        + file.name
+        + '">'
+        + file.name
+        + '</a></li>';
+  }
+
+  list += '</ul>';
+
+  res.end(list);
+}
+
+server.listen(serverPort);
+
+console.log('Server running at http://localhost:'
+    + serverPort
+    + '/');
+console.log('Root Dir:', rootDir);
