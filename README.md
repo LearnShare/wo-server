@@ -17,7 +17,7 @@ Usage
 
 ```
 cd dir/to/your/project/
-wo-server
+wosvr
 ```
 
 Server running at http://localhost:8135/  
@@ -26,7 +26,7 @@ Root Dir: dir/to/your/project/
 ###with arguments
 
 ```
-wo-server -d dir/to/your/project/ -p 8080 -l
+wosvr -d dir/to/your/project/ -p 8080 -l
 ```
 
 Supported arguments:
