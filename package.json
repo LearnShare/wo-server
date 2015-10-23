@@ -6,7 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "wo-server": "./bin/app"
+    "wosvr": "./bin/app"
   },
   "keywords": [
     "wo-server",
